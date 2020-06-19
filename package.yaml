@@ -1,0 +1,50 @@
+name:                HStriver
+version:             0.1.0.0
+license:             BSD3
+git:              "https://gitlab.software.imdea.org/streamrv/hstriver"
+# author:              "Author name here"
+# maintainer:          "example@example.com"
+# copyright:           "2019 Author name here"
+
+extra-source-files:
+- README.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitLab at <https://gitlab.software.imdea.org/streamrv/hstriver>
+
+dependencies:
+  - containers
+  - base
+  - lens
+  - mtl
+  - aeson >= 1.1.2.0
+  - random >= 1.1
+  - bytestring
+  - time
+  - directory
+  - filepath
+  - extra
+
+# Array and Vector are very similar... But Vector should be more efficient
+
+library:
+  source-dirs: src
+
+executable:
+  source-dirs: src # app originally
+  ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+#    - -O0
+# dependencies:
+#    - HLola
+# default-extensions:
+#    - OverloadedStrings
+  main: Main.hs

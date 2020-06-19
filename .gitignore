@@ -1,0 +1,12 @@
+.stack-work/
+test/
+HStriver.cabal
+*~
+dsl/dsl
+dsl/testfiles/*
+paper/main.aux
+paper/main.log
+paper/main.out
+paper/main.pdf
+paper/texput.log
+**/auto
