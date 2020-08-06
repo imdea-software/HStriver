@@ -15,8 +15,8 @@ phi n = "phi" ==: changePointsOf (opts!!n)
 opts :: [Stream Bool]
 opts = [undefined,opt1,opt2,opt3,opt4,opt5,opt6,opt7,opt8]
 
-signal :: Stream Double
-signal = Input "signal"
+verification :: Stream Double
+verification = Input "verification"
 
 mode :: Stream Double
 mode = Input "mode"
@@ -41,9 +41,9 @@ low = "low" ==: strMap "<0.5" (<0.5) pedal
 high :: Stream Bool
 high = "high" ==: strMap ">0.5" (>0.5) pedal
 utl :: Double -> Stream Bool
-utl x = "utl" <: x ==: strMap (">-" ++ show x) (>(-x)) signal
+utl x = "utl" <: x ==: strMap (">-" ++ show x) (>(-x)) verification
 utr ::Double ->  Stream Bool
-utr x = "utr" <: x ==: strMap ("<" ++ show x) (<x) signal
+utr x = "utr" <: x ==: strMap ("<" ++ show x) (<x) verification
 pwr :: Stream Bool
 pwr = "pwr" ==: strMap ">0.5" (>0.5) mode
 norm :: Stream Bool
