@@ -30,7 +30,8 @@ data ITickExpr = ITickExpr {
 
 data IValExpr = IValExpr {
   calculateValueAt :: Event -> Stateful Val,
-  unhookPointersVE :: Stateful ()
+  unhookPointersVE :: Stateful (),
+  ffwd :: TimeT -> Stateful ()
                            }
 
 instance Show ILeader where
@@ -143,7 +144,10 @@ outputLeader tickExpr valExpr = do
   ev <- calculateNextTime tickExpr
   if isPosOutside ev then
     unhookPointersTE tickExpr >> unhookPointersVE valExpr >> return posOutside
-  else if isnotick ev then
+  else if isnotick ev then do
+    let mayberoll (T ts) = ffwd valExpr ts
+        mayberoll _ = return ()
+    mayberoll (getTS ev)
     return ev
   else do
     mval <- calculateValueAt valExpr ev

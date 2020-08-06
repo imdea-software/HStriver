@@ -29,7 +29,7 @@ type DynEvent = (Ident, MaybeOutside (TimeT, Dynamic))
 
 tableFromSpec :: Specification -> Stateful [ShowEvent]
 tableFromSpec spec = do
-  theEvs <- dynTableFromSpec spec
+  theEvs <- filter (\(id,_) -> id /= "ignoreme") Prelude.<$> dynTableFromSpec spec
   return $ map ownStr theEvs
   where
     strMap = (Map.fromList.map (first dgetId)) spec :: Map.Map Ident (Dynamic -> Value)
@@ -65,19 +65,15 @@ justMerge ls = do
     minT = minimum $ map (getTS.fst3) hds
     (consumables, leave) = partition ((==minT).getTS.fst3) hds
     dynevs = catMaybes $ map dynEv consumables :: [DynEvent]
+    comeon [] = [("ignoreme", NegOutside)]
+    comeon x = x
     keep = map (appFst3 Just) leave ++ map (appFst3 (const Nothing)) consumables in do
       rest <- if minT == PosInfty then return [] else justMerge keep
-      return $ dynevs ++ rest
+      return $ (comeon dynevs) ++ rest
 
 appFst3 f (a,b,c) = (f a, b, c)
 fst4 (a,_,_,_) = a
 appFst4 f (a,b,c,d) = (f a, b, c, d)
-
-getHead :: (Maybe Event, (Ident, Dynamic->String, Dynamic->Value), PointerIndex) -> Stateful (Event, (Ident, Dynamic->String, Dynamic->Value), PointerIndex)
-getHead (Just x, i, p) = return (x,i,p)
-getHead (Nothing, i, p) = do
-  ev <- liftM (fromMaybe $ error "pulled reentrant") $ pull p
-  return (ev, i, p)
 
 dgetHead :: (Maybe Event, Ident, PointerIndex) -> Stateful (Event, Ident, PointerIndex)
 dgetHead (Just x, i, p) = return (x,i,p)
@@ -131,19 +127,19 @@ statefulTExpr (DDelayTE dd dec) = statefulDec dec >> delayTickExpr dd (dgetId de
 
 statefulVExpr :: ValExprDyn -> Stateful IValExpr
 statefulVExpr (DLeaf x) = return $ constValExpr x
-statefulVExpr DCV = return $ cvValExpr
+statefulVExpr DCV = return cvValExpr
 statefulVExpr (DOrNoTick x y) = do
-  ve0 <- statefulVExpr x
-  ve1 <- statefulVExpr y
+  !ve0 <- statefulVExpr x
+  !ve1 <- statefulVExpr y
   return $ orValExpr ve0 ve1
 statefulVExpr (DTau texp) = do
-  itexp <- statefulTauExpr statefulDec texp
+  !itexp <- statefulTauExpr statefulDec texp
   return $ tau2ValExpr itexp
 statefulVExpr (DProj DTauT _) = error "Projecting T not allowed"
 statefulVExpr (DProj dtexp f) = do
-  itexp <- statefulTauExpr statefulDec dtexp
+  !itexp <- statefulTauExpr statefulDec dtexp
   return $ proj2ValExpr f itexp
 statefulVExpr (DApp x y) = do
-  ve0 <- statefulVExpr x
-  ve1 <- statefulVExpr y
+  !ve0 <- statefulVExpr x
+  !ve1 <- statefulVExpr y
   return $ appValExpr ve0 ve1

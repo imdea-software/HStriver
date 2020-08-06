@@ -47,6 +47,11 @@ infix 1 =:
 (=:) :: (Streamable a, Streamable cv) => Ident -> (TickExpr cv, ValExpr cv a) -> Declaration a
 s =: (te,ve) = Output s te ve
 
+infix 1 ==:
+(==:) :: (Streamable a) => Ident -> Declaration a -> Declaration a
+s ==: Output _ te ve = s =: (te, ve)
+s ==: x@(Input _) = s =: (ticksTE x, CV)
+
 infixl 4 <$>
 (<$>) :: (Typeable a, Typeable b, Typeable cv) => (a -> b) -> ValExpr cv a -> ValExpr cv b
 f <$> e = App (Leaf f) e

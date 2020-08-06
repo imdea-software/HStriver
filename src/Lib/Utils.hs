@@ -1,5 +1,5 @@
 module Lib.Utils where
-import qualified Prelude as P()
+import qualified Prelude as P
 import HStriver
 
 -- foldl :: (b -> a -> b) -> b -> t a -> b
@@ -12,7 +12,7 @@ import HStriver
 strMap :: (Streamable a, Streamable b) => Ident -> (a->b) -> Stream a -> Stream b
 strMap name f dec = let
   ticks = ticksTE dec
-  vals = f <$> dec @<~ t
+  vals = f <$> CV
   in
   name <: getId dec =: (ticks,vals)
 
@@ -25,3 +25,27 @@ changePointsOf str = let
   update _ = True
   vals = (update <$> mEq) :=> CV
   in "changePoints" <: str =: (ticks,vals)
+
+firstEvOf :: (Streamable a) => Stream a -> Stream a
+firstEvOf str = let
+  ticks = ticksTE str
+  _this = firstEvOf str
+  vals = ((==NegInfty) <$> Tau (_this :<< TauT)) :=> CV
+  in "firstOf" <: str =: (ticks,vals)
+
+joinWith :: (Streamable a) => Ident -> (a->a->a) -> Stream a -> Stream a -> Stream a
+joinWith funname fun x y = let
+  name = "joinWith_" ++ funname <: x <: y
+  ticks = ticksTE x :+ ticksTE y
+  vals = operate <$> (Proj (x :<~ t)) <*> (Proj (y :<~t))
+  in name =: (ticks,vals)
+  where
+    operate NegOutside (Ev x) = x
+    operate (Ev x) NegOutside = x
+    operate (Ev x) (Ev y) = fun x y
+
+strAnd :: Stream Bool -> Stream Bool -> Stream Bool
+strAnd = joinWith "/\\" (P.&&)
+
+shift :: (Streamable a) => TimeTDiff -> Stream a -> Stream a
+shift n x = "shift" <:n<:x =: (ShiftTE n x, CV)

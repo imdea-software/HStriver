@@ -9,11 +9,12 @@ import Control.Monad
 
 data ITauExpr = ITauExpr {
   getTTau :: Event -> Stateful Event,
-  unhookPointersTau :: Stateful ()
+  unhookPointersTau :: Stateful (),
+  ffwdTau :: TimeT -> Stateful ()
                            }
 
 statefulTauExpr :: (DeclarationDyn -> Stateful ()) -> TauExprDyn -> Stateful ITauExpr
-statefulTauExpr _ DTauT = return $ ITauExpr return (return ())
+statefulTauExpr _ DTauT = return $ ITauExpr return (return ()) (const $ return ())
 statefulTauExpr f (DPrev dec texp) = f dec >> statefulTauExpr f texp >>= genPrev False dec
 statefulTauExpr f (DPrevEq dec texp) = f dec >> statefulTauExpr f texp >>= genPrev True dec
 statefulTauExpr f (DSucc dec texp) = f dec >> statefulTauExpr f texp >>= genSucc False dec
@@ -26,6 +27,7 @@ genPrev isEq dec itexp = do
   stateix <- getTEStateIndex
   setTEState stateix $ toDyn (negOutside, negOutside)
   return $ ITauExpr (getPrev isEq stateix pindex itexp) (unhookPointer pindex >> unhookPointersTau itexp)
+    (\t -> do {!_<- getPrev isEq stateix pindex itexp (Ev (t,undefined)) ; return ()})
 
 getPrev :: Bool -> TeStateIndex -> PointerIndex -> ITauExpr -> Event -> Stateful Event
 getPrev isEq ix pindex tauexpr ev = do
@@ -33,9 +35,9 @@ getPrev isEq ix pindex tauexpr ev = do
   innerev <- getTTau tauexpr ev
   t <- return $ getTS innerev
   (newlastret, newhead) <- getNewVals pindex t evs
-  newlastret <- return $ if isEq && getTS newhead == t && not (isnotick newhead) then newhead else newlastret
-  setTEState ix $ toDyn (newlastret, newhead)
-  return newlastret
+  newlastret2 <- return $ if isEq && getTS newhead == t && not (isnotick newhead) then newhead else newlastret
+  setTEState ix $ toDyn (newlastret2, newhead)
+  return newlastret2
 
 getNewVals :: PointerIndex -> Time -> (Event, Event) -> Stateful (Event, Event)
 getNewVals pindex t (lastret, headev)
@@ -48,10 +50,10 @@ getNewVals pindex t (lastret, headev)
 
 genSucc :: Bool -> DeclarationDyn -> ITauExpr -> Stateful ITauExpr
 genSucc isEq dec itexp = do
-  pindex <- getPointer $ dgetId dec
+  !pindex <- getPointer $ dgetId dec
   stateix <- getTEStateIndex
   setTEState stateix $ toDyn negOutside
-  return $ ITauExpr (getSucc isEq stateix pindex itexp) (unhookPointer pindex >> unhookPointersTau itexp)
+  return $ ITauExpr (getSucc isEq stateix pindex itexp) (unhookPointer pindex >> unhookPointersTau itexp) (\t -> getSucc isEq stateix pindex itexp (Ev (t,undefined)) >> return ())
 
 getSucc :: Bool -> TeStateIndex -> PointerIndex -> ITauExpr -> Event -> Stateful Event
 getSucc isEq ix pindex tauexpr ev = do
@@ -76,7 +78,7 @@ boundedSucc bound dec itexp = do
   pindex <- getPointer $ dgetId dec
   stateix <- getTEStateIndex
   setTEState stateix $ toDyn negOutside
-  return $ ITauExpr (getBoundedSucc bound stateix pindex itexp) (unhookPointer pindex >> unhookPointersTau itexp)
+  return $ ITauExpr (getBoundedSucc bound stateix pindex itexp) (unhookPointer pindex >> unhookPointersTau itexp) (\t -> getBoundedSucc bound stateix pindex itexp (Ev (t,undefined)) >> return ())
 
 getBoundedSucc :: TimeTDiff -> TeStateIndex -> PointerIndex -> ITauExpr -> Event -> Stateful Event
 getBoundedSucc bound ix pindex tauexpr ev = do

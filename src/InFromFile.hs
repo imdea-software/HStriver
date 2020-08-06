@@ -13,8 +13,6 @@ import Declaration.Spec
 import System.FilePath.Posix(takeBaseName, takeExtension)
 import qualified Data.Map.Strict as Map
 import Data.Maybe
-import Debug.Trace
-import qualified Data.Map.Merge.Strict as MM
 
 type FromJSONers = Map.Map Ident (Value -> Dynamic)
 
@@ -23,7 +21,7 @@ data SourcesMode = STDIN | Files {path :: String, fieldName :: String}
 x !!! y = x Map.! y
 
 simpletsgetter :: String -> TSGetter
-simpletsgetter fieldname m = (fromMaybe (error "aca").parseMaybe parseJSON) (traceShowId $ m !!! fieldname)
+simpletsgetter fieldname m = (fromMaybe (error "aca").parseMaybe parseJSON) (m !!! fieldname)
 
 runSpecJSON :: TSGetter -> SourcesMode -> Specification -> IO ()
 runSpecJSON getts src@(Files _ fieldval) decs = do

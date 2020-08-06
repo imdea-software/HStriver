@@ -7,16 +7,16 @@ import GHC.Generics
 import qualified Data.Dynamic as Dyn
 import Data.Time
 
-type TimeT = UTCTime
-type TimeTDiff = NominalDiffTime
--- type TimeT = Int
--- type TimeTDiff = Int
+-- type TimeT = UTCTime
+-- type TimeTDiff = NominalDiffTime
+type TimeT = Double
+type TimeTDiff = Double
 data Time = T TimeT | NegInfty | PosInfty deriving (Eq,Show, Generic, ToJSON)
 type Val = Maybe Dyn.Dynamic
 
 maxT :: Time
--- maxT = PosInfty
-maxT = T $ UTCTime (fromGregorian 2017 2 25) 0
+maxT = PosInfty
+-- maxT = T $ UTCTime (fromGregorian 2017 2 25) 0
 
 instance Num UTCTime where
   negate      = error "TimeT is not int"
@@ -82,8 +82,8 @@ makeEv (T t) v = Ev (t, v)
 -- timePlus x _ = x
 
 tDiffAdd :: TimeT -> TimeTDiff -> TimeT
-tDiffAdd = flip addUTCTime
--- tDiffAdd = (+)
+-- tDiffAdd = flip addUTCTime
+tDiffAdd = (+)
 
 timeDiffPlus :: Time -> TimeTDiff -> Time
 timeDiffPlus (T x) y = T (x `tDiffAdd` y)
