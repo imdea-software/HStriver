@@ -1,13 +1,35 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-module Theories.Ambient where
+module TimeDomain.TimeT where
 import Data.Aeson
 import Data.Aeson.Types
 import GHC.Generics
 import qualified Data.Map.Strict as Map
 import Data.Maybe
-import HStriver(TimeT, TSGetter)
 import Data.Time
+
+type TimeT = UTCTime
+type TimeDiff = NominalDiffTime
+
+type TSGetter = Map.Map String Value -> TimeT
+
+data Time = T TimeT | NegInfty | PosInfty deriving (Eq,Show, Generic, ToJSON)
+maxT :: Time
+maxT = T $ UTCTime (fromGregorian 2017 2 25) 0
+
+instance Num UTCTime where
+  negate      = error "TimeT is not int"
+  (+)         = error "TimeT is not int"
+  (*)         = error "TimeT is not int"
+  fromInteger = error "TimeT is not int"
+  abs         = error "TimeT is not int"
+  signum      = error "TimeT is not int"
+
+tDiffAdd :: TimeT -> TimeDiff -> TimeT
+tDiffAdd = flip addUTCTime
+-- tDiffAdd = (+)
+tDiff :: TimeT -> TimeT -> TimeDiff
+tDiff = diffUTCTime
 
 data SysTime = SysTime {year :: Integer, month :: Int, day :: Int, hour :: Int, minute :: Int, second :: Double} deriving (Generic, FromJSON)
 

@@ -1,60 +1,97 @@
+{-# LANGUAGE RebindableSyntax  #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 module Main where
--- import Examples.RobustSTLSpec
--- import Examples.Examples
--- import Examples.WindowEx
-import qualified Examples.TVEx as TVEx(cost_no_delays,spec_no_delays,spec_with_delays)
+import GHC.Generics
+import Data.Aeson
 import InFromFile
-import System.Environment
 import System.IO
-import Declaration.StaticAnalysis
-import HStriver(Specification)
-import qualified Examples.Throughput as Throughput (main)
-import qualified Examples.Cost as Cost
-import Theories.Ambient
-import qualified Examples.Exp1 as Exp1
-import qualified Examples.Exp2 as Exp2
-import qualified Examples.Exp3and4 as Exp3and4
-
-data RunMode = ExecSpec Specification String String | AnalyseImportedSpec | Throughput Int | ShowHelp | Experiment Int
-
-importedSpec :: Specification
-importedSpec = TVEx.spec_no_delays
--- importedSpec = TVEx.cost_no_delays
+import System.Environment
+import HStriver
+import Syntax.Booleans
+import Syntax.Ord
+import Syntax.Num
+import Declaration.DecDyn
+import Declaration.Spec
+import qualified Prelude as P
+import System.Random
+import Data.Maybe
+import Lib.STL
 
 main :: IO ()
-main = parseArgs <$> getArgs >>= runInMode
+main = (parseArgs P.<$> getArgs) >>= mapM_ putStrLn
 
-parseArgs :: [String] -> RunMode
-parseArgs ["Throughput",n] = Throughput (read n)
-parseArgs ["Cost", dir,p,aps,sps,pe,wu,gts] = ExecSpec (TVEx.cost_no_delays (Cost.CT (fromIntegral$read p) (read aps) (read sps) (read pe) (read wu) (read gts))) dir "Value"
-parseArgs ["--analyse"] = AnalyseImportedSpec
-parseArgs ["--execute", dir, valfield] = ExecSpec importedSpec dir valfield
-parseArgs ["experiment",i] = Experiment (read i)
-parseArgs _ = ShowHelp
+parseArgs :: [String] -> [String]
+parseArgs [densitystr, winsizestr, tlenstr] = let
+  density = read densitystr
+  tlen = read tlenstr
+  winsize = read winsizestr
+  ins = makeins tlen (1 P./ density)
+  outevsold = runSpecMocked [out $ ok winsize] ins
+  outevs = runSpecMocked [out speed] ins
+  in outevs
 
-runInMode :: RunMode -> IO ()
-runInMode (ExecSpec spec dir valfield) = do
-  hSetBuffering stdin LineBuffering
-  hSetBuffering stdout LineBuffering
-  runSpecJSON sysTimeGetter (Files dir valfield) spec
-runInMode AnalyseImportedSpec = analyse importedSpec
-runInMode (Experiment n) = do
-  hSetBuffering stdin LineBuffering
-  hSetBuffering stdout LineBuffering
-  runExperiment n
-runInMode (Throughput n) = Throughput.main n
-runInMode ShowHelp = putStr$unlines [
-    "Wrong arguments. Usage:"
-  , "  HStriver --analyse"
-  , "  HStriver --execute dir valueField"
-  , "  HStriver Throughput"
-  , "Where dir indicates the directory to look for the input JSONs, and valueField is the field where the value of the events is placed."
-  , "Modify Main.hs to specify the imported the spec to --analyse or --execute."]
+makeins :: Int -> Double -> [(Ident, [Event])]
+makeins tlen dt = let
+  ts1 = map ((* dt).fromIntegral) [0..]
+  -- vals1 = map (Just. toDyn::Double -> Maybe Dynamic) $ (randomRs (0,1) (mkStdGen 1337))
+  vals1 = map (Just. toDyn::Double -> Maybe Dynamic) $ take 20000 (randomRs (0,1) (mkStdGen 1337)) ++ repeat 1
+  s1 = map Ev $ take tlen (zip ts1 vals1)
+  in [("rand", s1)]
 
-runExperiment :: Int -> IO ()
-runExperiment n
- | n == 1 = runSpecJSON sysTimeGetterIgnoreSeconds sourcesmode Exp1.spec
- | n == 2 = runSpecJSON sysTimeGetter sourcesmode Exp2.spec
- | n == 3 = runSpecJSON sysTimeGetter sourcesmode Exp3and4.spec3
- | n == 4 = runSpecJSON sysTimeGetter sourcesmode Exp3and4.spec4
- where sourcesmode = Files "ambient" "Value"
+max_speed = 3
+ok_speed = 1
+
+-- -=-=-=-=-=-=-=-=-=-=-=-=-=
+
+rand :: Stream Double
+rand = input "rand"
+
+sgn :: Stream Double
+sgn = "sgn" =: let
+  ticks = ticksTE nxtoff
+  val = let spd = speed@<~t in
+    if spd > 10 then -1 else if spd < -1.5 then 1 else if CV < 0 then -1 else 1
+  in (ticks,val)
+
+nxtoff :: Stream Double
+nxtoff = "nxtoff" =: let
+  ticks = ticksTE rand
+  val = (sgn @< (t?|0)) * 0.3 + CV - 0.5
+  in (ticks,val)
+
+speed :: Stream Double
+speed = "speed" =: let
+  ticks = ticksTE nxtoff
+  val = speed @<(t?|0) + CV
+  in (ticks,val)
+
+toofast :: Stream Bool
+toofast = "toofast" =: let
+  ticks = ticksTE speed
+  val = CV > max_speed
+  in (ticks,val)
+
+okspeed :: Stream Bool
+okspeed = "okspeed" =: let
+  ticks = ticksTE speed
+  val = CV < ok_speed
+  in (ticks,val)
+
+decel :: Stream Bool
+decel = "decel" =: let
+  ticks = ticksTE speed
+  val = CV > speed @> (t?|0)
+  in (ticks,val)
+
+slow_down :: Double -> Stream Bool
+-- slow_down winsize = ineffuntil (0,winsize) decel okspeed
+slow_down winsize = until (0,winsize) decel okspeed
+
+ok :: Double -> Stream Bool
+ok winsize = "ok" =: let
+  sld = slow_down winsize
+  ticks = ticksTE toofast :+ ticksTE sld
+  val = (toofast @<~ (t?|False)) `implies` (sld @<~ (t?|True))
+  in (ticks,val)

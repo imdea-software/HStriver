@@ -1,34 +1,17 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-module Declaration.Event (module Declaration.Event, Dyn.Dynamic, Dyn.toDyn, Dyn.fromDyn, Dyn.fromDynamic, Dyn.dynApp, Dyn.Typeable) where
+module Declaration.Event (module Declaration.Event, Dyn.Dynamic, Dyn.toDyn, Dyn.fromDyn, Dyn.fromDynamic, Dyn.dynApp, Dyn.Typeable, module TimeDomain.TimeT) where
 import Data.Maybe
 import Data.Aeson
 import GHC.Generics
 import qualified Data.Dynamic as Dyn
-import Data.Time
+import TimeDomain.TimeT
 
-type TimeT = UTCTime
-type TimeTDiff = NominalDiffTime
--- type TimeT = Int
--- type TimeTDiff = Int
-data Time = T TimeT | NegInfty | PosInfty deriving (Eq,Show, Generic, ToJSON)
 type Val = Maybe Dyn.Dynamic
-
-maxT :: Time
--- maxT = PosInfty
-maxT = T $ UTCTime (fromGregorian 2017 2 25) 0
-
-instance Num UTCTime where
-  negate      = error "TimeT is not int"
-  (+)         = error "TimeT is not int"
-  (*)         = error "TimeT is not int"
-  fromInteger = error "TimeT is not int"
-  abs         = error "TimeT is not int"
-  signum      = error "TimeT is not int"
 
 type Event = MaybeOutside (TimeT, Val)
 
-data MaybeOutside x = NegOutside | PosOutside | Ev x deriving Show
+data MaybeOutside x = NegOutside | PosOutside | Ev x deriving (Show, Eq)
 instance Functor MaybeOutside where
   fmap f (Ev x) = Ev (f x)
   fmap _ NegOutside = NegOutside
@@ -54,6 +37,9 @@ isinside :: Event -> Bool
 isinside (Ev _) = True
 isinside _ = False
 
+getEvent :: MaybeOutside (a,b) -> (a,b)
+getEvent (Ev x) = x
+
 posOutside :: Event
 posOutside = PosOutside
 negOutside :: Event
@@ -62,6 +48,10 @@ negOutside = NegOutside
 isPosOutside :: Event -> Bool
 isPosOutside PosOutside = True
 isPosOutside _ = False
+
+isNegOutside :: Event -> Bool
+isNegOutside NegOutside = True
+isNegOutside _ = False
 
 instance Ord Time where
   compare (T x) (T y) = compare x y
@@ -81,13 +71,9 @@ makeEv (T t) v = Ev (t, v)
 -- timePlus (T x) y = T (x+y)
 -- timePlus x _ = x
 
-tDiffAdd :: TimeT -> TimeTDiff -> TimeT
-tDiffAdd = flip addUTCTime
--- tDiffAdd = (+)
-
-timeDiffPlus :: Time -> TimeTDiff -> Time
-timeDiffPlus (T x) y = T (x `tDiffAdd` y)
-timeDiffPlus x _ = x
-
 unT :: Time -> TimeT
 unT (T x) = x
+
+timeDiffPlus :: Time -> TimeDiff -> Time
+timeDiffPlus (T x) y = T (x `tDiffAdd` y)
+timeDiffPlus x _ = x

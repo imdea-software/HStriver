@@ -1,0 +1,46 @@
+time domain Double
+use library Utils
+use haskell Data.Maybe
+
+#HASKELL
+data Product = ProductA | ProductB | ProductC deriving (Show, Eq)
+tolerance p = 10
+lowval p x = x P.<= 0
+#ENDOFHASKELL
+
+input Int sale <Product p>
+input Int arrival <Product p>
+
+define Int stock <Product p>:
+  ticks = ticksOf (sale p) U ticksOf (arrival p)
+  val = let
+    (msal, marr) = cv
+    sal = 1'(fromMaybe 0) msal
+    arr = 1'(fromMaybe 0) marr
+    in
+    stock p [<t|0] - sal + arr
+
+define Bool low_stock <Product p> = strMap "low" (lowval p) (stock p)
+
+define Bool cp_low_stock <Product p> = changePointsOf (low_stock p)
+
+define TimeDiff alarm_timer <Product p>:
+  ticks = ticksOf (cp_low_stock p)
+  val = if cv then tolerance p else (-1)
+
+define () alarm <Product p>:
+  ticks = delay (alarm_timer p)
+  val = '()
+
+output () any_alarm:
+  ticks = ticksOf (alarm ProductA) U ticksOf (alarm ProductB)
+          U ticksOf (alarm ProductC)
+  val = '()
+
+-- Alternative alarm:
+define TimeDiff alarm_timer2 <Product p>:
+  ticks = ticksOf (cp_low_stock p) U ticksOf (arrival p)
+  val = let
+    (mls, marr) = cv
+    ls = 1'fromJust mls
+    in if (1'isJust marr) || not ls then (-1) else tolerance p

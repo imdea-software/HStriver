@@ -16,7 +16,7 @@ data RunMode = Alert | Sleeping  deriving (Show,Generic,ToJSON,Eq)
 type Cost = Int
 
 data CostTable = CT {
-  alertPatience :: TimeTDiff,
+  alertPatience :: TimeDiff,
   alertPerSecond :: Cost,
   sleepingPerSecond :: Cost,
   processEvent :: Cost,
@@ -36,14 +36,14 @@ transitionCost _ Sleeping Sleeping = error "going to sleep while sleeping?" -- T
 spec :: Typeable a => CostTable -> Stream a -> Specification
 spec ct wakeup = [out$costJumps ct wakeup, out$runMode (alertPatience ct) wakeup]
 
-sleep :: Typeable a => TimeTDiff -> Stream a -> Stream ()
+sleep :: Typeable a => TimeDiff -> Stream a -> Stream ()
 sleep patience wakeup = let
   ticks = DelayTE Positive sleep_delayer
   vals = Leaf ()
   sleep_delayer = "sleep_delayer" =: (ticksTE wakeup, Leaf patience)
   in "sleep" =: (ticks,vals)
 
-runMode :: Typeable a => TimeTDiff -> Stream a -> Stream RunMode
+runMode :: Typeable a => TimeDiff -> Stream a -> Stream RunMode
 runMode patience wakeup = let
   ticks = ticksTE wakeup :+ ticksTE (sleep patience wakeup)
   wakingup = isJust.fst <$> CV
@@ -60,7 +60,7 @@ costJumps ct wakeup = let
   prevt = getTimeT <$> Tau (rmStream :<< t) <*> now
   getTimeT (T x) _ = x
   getTimeT _ y = y
-  timediff = round.realToFrac <$> (diffUTCTime <$> now <*> prevt)
+  timediff = round.realToFrac <$> (tDiff <$> now <*> prevt)
   ---
   ticks = ticksTE rmStream
   accum = (snd<$>_this @< (t?|(0,0))) + timediff * (flip runCostPerSecond ct <$> previousRunMode)

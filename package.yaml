@@ -30,6 +30,7 @@ dependencies:
   - directory
   - filepath
   - extra
+  - array
 
 # Array and Vector are very similar... But Vector should be more efficient
 

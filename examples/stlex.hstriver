@@ -1,0 +1,23 @@
+time domain Double
+
+use library STL
+use library Utils
+
+const max_speed = 5
+const ok_speed = 4
+
+input Double speed
+
+define Bool toofast = strMap "toofast" (P.>max_speed) speed
+
+define Bool speedok = strMap "speedok" (P.<=ok_speed) speed
+
+define Bool decel:
+  ticks = ticksOf speed
+  val = cv > speed[t>|0]
+
+define Bool slow_down = until (0,5) decel speedok
+
+output Bool ok:
+  ticks = ticksOf toofast U ticksOf slow_down
+  val = toofast [~t|False] `implies` slow_down [~t|True]

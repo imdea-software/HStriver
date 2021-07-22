@@ -1,0 +1,60 @@
+time domain UTC
+
+use library Utils
+use haskell Data.Time
+
+#HASKELL
+data TVStatus = OFF | ON deriving (Show,Generic,Read,FromJSON,ToJSON,Eq)
+#ENDOFHASKELL
+
+const instantsPerMinute = 1
+
+input TVStatus livingroom_tv_status
+input TVStatus office_tv_status
+
+define Bool livingroom_tv_on = strMap "isOn" (==ON) livingroom_tv_status
+define Bool office_tv_on = strMap "isOn" (==ON) office_tv_status
+
+define Bool any_tv_on:
+  ticks = ticksOf office_tv_on U ticksOf livingroom_tv_on
+  val = office_tv_on [~t|False] || livingroom_tv_on [~t|False]
+
+define Int instantN:
+  ticks = ticksOf any_tv_on
+  val = instantN [<t|0] + 1
+
+define Bool isNewDay:
+  ticks = ticksOf any_tv_on
+  val = let
+    today = 1'utctDay now
+    prev = 1'(utctDay.unT) (timeOf (any_tv_on << t))
+    in
+    if instantN [~t|] === 1 then 'True else today /== prev
+
+define Int howMuchTvToday:
+  ticks = ticksOf any_tv_on
+  val = let
+    prevVal = if isNewDay [~t|] then 0 else howMuchTvToday [<t|0]
+    sumVal = if any_tv_on [~t|] then 1 else 0
+    in
+    prevVal + sumVal
+
+output Bool exceeded3hPerDay:
+  ticks = ticksOf any_tv_on
+  val = howMuchTvToday[~t|] > 3*60*instantsPerMinute
+
+define Int countDays:
+  ticks = ticksOf any_tv_on
+  val = countDays [<t|0] + if isNewDay[~t|] then 1 else 0
+
+define Int totalTVTime:
+  ticks = ticksOf any_tv_on
+  val = totalTVTime [<t|0] + if any_tv_on[~t|] then 1 else 0
+
+define Int avgTvPast:
+  ticks = ticksOf any_tv_on
+  val = if isNewDay[~t|] then 2'div (totalTVTime[~t|]) (countDays[~t|]) else avgTvPast [<t|0]
+
+output Bool exceededAvgPlus30m:
+  ticks = ticksOf any_tv_on
+  val = howMuchTvToday[~t|] > avgTvPast[~t|] + 30 * instantsPerMinute

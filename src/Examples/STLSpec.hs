@@ -71,7 +71,7 @@ ok = let
   where
     a `implies` b = if a then b else Leaf True
 
-delayNegMe :: Declaration TimeTDiff
+delayNegMe :: Declaration TimeDiff
 delayNegMe = let
   ticks = ConstTE undefined -- 40 Recover time
   vals = Leaf (-5)

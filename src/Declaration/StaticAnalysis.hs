@@ -8,6 +8,7 @@ import Data.Maybe
 import System.Exit
 
 type Grapher = State (Set.Set Ident, Graph)
+type Lister = State (Set.Set Ident, [DeclarationDyn]) ()
 
 data Sign = Present | Past | Future deriving (Eq, Ord, Show)
 type Arrow = (Ident, Ident, Sign)
@@ -16,14 +17,58 @@ type FGraph = Map.Map Ident (Map.Map Ident (Set.Set Sign))
 
 analyse :: Specification -> IO ()
 analyse decs = let
-  -- g is the dependency graph of the specification
+  alloutdecs = getAllOutDecs decs
+  nofunnotick = all checkFunsNotick alloutdecs
   (dot, merr) = getGraph decs
   -- dot is the dotfile to plot the dependency graph
   showdot = "Dot file:\n" ++ dot in do
   putStrLn showdot
   case merr of
-      Nothing -> exitSuccess
+      Nothing -> if nofunnotick then exitSuccess else putStrLn "ERROR: Function with notick" >> exitWith (ExitFailure 1)
       Just err -> putStrLn err >> exitWith (ExitFailure 1)
+
+getAllOutDecs :: Specification -> [DeclarationDyn]
+getAllOutDecs spec = let
+  damonad = mapM_ (lister.fst) spec
+  (_,decs) = execState damonad (Set.empty, [])
+  in decs
+
+lister :: DeclarationDyn -> Lister
+lister (DInp _ _ _) = return ()
+lister def@(DOut streamid te ve) = do
+  (ids, decs) <- get
+  when (not $ Set.member streamid ids)
+    (put (Set.insert streamid ids, def:decs) >> telister te >> velister ve)
+
+telister :: TickExprDyn -> Lister
+telister (DConstTE _) = return ()
+telister (DUnion te1 te2 _) =
+  telister te1 >> telister te2
+telister (DShiftTE _ dec) = lister dec
+telister (DDelayTE _ dec) = lister dec
+
+velister :: ValExprDyn -> Lister
+velister (DApp ve1 ve2) = velister ve1 >> velister ve2
+velister (DITE ve1 ve2 ve3) = velister ve1 >> velister ve2 >> velister ve3
+velister (DTau te) = taulister te >> return ()
+velister (DProj te _) = taulister te >> return ()
+velister _ = return ()
+
+taulister :: TauExprDyn -> Lister
+taulister DTauT = return ()
+taulister (DPrev dec te) = lister dec >> taulister te
+taulister (DPrevEq dec te) = lister dec >> taulister te
+taulister (DSucc dec te) = lister dec >> taulister te
+taulister (DSuccEq dec te) = lister dec >> taulister te
+taulister (DBoundedSucc _ dec te) = lister dec >> taulister te
+
+checkFunsNotick :: DeclarationDyn -> Bool
+checkFunsNotick (DOut _ _ ve) = check True ve
+  where
+  check _ (DApp ve1 ve2) = check False ve1 && check False  ve2
+  check allowed (DITE ve1 ve2 ve3) = check False ve1 && check allowed ve2 && check allowed ve3
+  check allowed DNotick = allowed
+  check _ _ = True
 
 getGraph :: Specification -> (String, Maybe String)
 getGraph spec = let
@@ -81,7 +126,7 @@ paths graph forbidden a b = let
       | otherwise = x
 
 dec2arrows :: DeclarationDyn -> Grapher ()
-dec2arrows (DInp _ _) = return ()
+dec2arrows (DInp _ _ _) = return ()
 dec2arrows (DOut streamid te ve) = do
   (set, graph) <- get
   when (not $ Set.member streamid set)
@@ -112,8 +157,8 @@ getArrows streamid sgn dec = do
 
 
 ve2arrows :: Ident -> ValExprDyn -> Grapher ()
-ve2arrows streamid (DOrNoTick ve1 ve2) = ve2arrows streamid ve1 >> ve2arrows streamid ve2
 ve2arrows streamid (DApp ve1 ve2) = ve2arrows streamid ve1 >> ve2arrows streamid ve2
+ve2arrows streamid (DITE ve1 ve2 ve3) = ve2arrows streamid ve1 >> ve2arrows streamid ve2 >> ve2arrows streamid ve3
 ve2arrows streamid (DTau te) = tau2arrows streamid te >> return ()
 ve2arrows streamid (DProj te _) = tau2arrows streamid te >> return ()
 ve2arrows streamid _ = return ()

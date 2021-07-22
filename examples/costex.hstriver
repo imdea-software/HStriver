@@ -1,0 +1,57 @@
+time domain Double
+use haskell Data.Maybe
+
+#HASKELL
+data RunMode = Alert | Sleeping  deriving (Show,Generic,ToJSON,Eq)
+
+type Cost = Int
+
+data CostTable = CT {
+  alertPatience :: TimeDiff,
+  alertPerSecond :: Cost,
+  sleepingPerSecond :: Cost,
+  processEvent :: Cost,
+  wakeUp :: Cost,
+  gotoSleep :: Cost}
+
+runCostPerSecond :: RunMode -> Cost
+runCostPerSecond Alert = alertPerSecond ct
+runCostPerSecond Sleeping = sleepingPerSecond ct
+
+transitionCost :: RunMode -> RunMode -> Cost
+transitionCost Alert Alert = processEvent ct -- Cost of processing an event
+transitionCost Sleeping Alert = wakeUp ct + processEvent ct -- Wakeup + processing
+transitionCost Alert Sleeping = gotoSleep ct -- Cost of going to sleep
+transitionCost Sleeping Sleeping = error "going to sleep while sleeping?" -- This should never happen
+#ENDOFHASKELL
+
+const ct = CT 10 100 1 20 100 100
+const patience = alertPatience ct
+
+input () wakeup
+
+define TimeDiff sleep_delayer:
+  ticks = ticksOf wakeup
+  val = 'patience
+
+define () sleep:
+  ticks = delay sleep_delayer
+  val = '()
+
+define RunMode runMode:
+  ticks = ticksOf wakeup U ticksOf sleep
+  val = if 1'isJust (fst cv) then 'Alert else 'Sleeping
+
+output Cost cost:
+  ticks = ticksOf runMode
+  val = let
+    previousRunMode = runMode[<t|Alert]
+    currentRunMode = cv
+    costOfTransitioning = 2'transitionCost previousRunMode currentRunMode
+    getTimeT (T x) _ = x
+    getTimeT _ y = y
+    prevt = 2'getTimeT (timeOf (runMode << t)) now
+    timediff = 1'(round.realToFrac) (2'tDiff now prevt)
+    accum = cost [<t|0] + timediff * ('runCostPerSecond previousRunMode)
+    in
+    accum + costOfTransitioning

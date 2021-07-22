@@ -7,6 +7,7 @@ import Data.Maybe
 import Data.Aeson
 import Data.Aeson.Types
 import Data.ByteString.Lazy.Char8 (unpack)
+import Data.List
 
 type DecDyn = (DeclarationDyn, Dynamic -> Value)
 
@@ -17,14 +18,15 @@ data Format = JSON | CSV deriving Eq
 data TickExprDyn =
     DConstTE TimeT
   | DUnion TickExprDyn TickExprDyn Dynamic
-  | DShiftTE TimeTDiff DeclarationDyn
+  | DShiftTE TimeDiff DeclarationDyn
   | DDelayTE DelayDir DeclarationDyn
 
 data ValExprDyn =
     DLeaf Dynamic
   | DCV
-  | DOrNoTick ValExprDyn ValExprDyn
+  | DNotick
   | DApp ValExprDyn ValExprDyn
+  | DITE ValExprDyn ValExprDyn ValExprDyn
   | DTau TauExprDyn
   | DProj TauExprDyn (Event -> Dynamic)
 
@@ -34,16 +36,20 @@ data TauExprDyn =
   | DPrevEq DeclarationDyn TauExprDyn
   | DSucc DeclarationDyn TauExprDyn
   | DSuccEq DeclarationDyn TauExprDyn
-  | DBoundedSucc TimeTDiff DeclarationDyn TauExprDyn
+  | DBoundedSucc TimeDiff DeclarationDyn TauExprDyn
 
 data DeclarationDyn =
-    DInp Ident (Value->Dynamic)
+    DInp Ident [String] (Value->Dynamic)
   | DOut Ident TickExprDyn ValExprDyn
 
 out :: forall a.(Typeable a, ToJSON a) => Declaration a -> DecDyn
 out = dec2Dyn
 
-dgetId (DInp x _) = x
+dgetId (DInp x pars _) = x ++ params pars
+  where
+    params [] = ""
+    params xs = "/" ++ intercalate "/" xs
+
 dgetId (DOut x _ _) = x
 
 dec2Dyn :: forall a. (Typeable a, ToJSON a) => Declaration a -> DecDyn
@@ -55,7 +61,11 @@ dec2Dyn' :: forall a. Declaration a -> DeclarationDyn
 dec2Dyn' (Input id) = let
   valtodyn = toDyn.(fromJust.(parseMaybe parseJSON) :: Value -> a)
   in
-  DInp id valtodyn
+  DInp id [] valtodyn
+dec2Dyn' (NewInput id params) = let
+  valtodyn = toDyn.(fromJust.(parseMaybe parseJSON) :: Value -> a)
+  in
+  DInp id params valtodyn
 dec2Dyn' (Output id tickexp valexp) = DOut id (te2Dyn tickexp) (vale2DynTop valexp)
 
 te2Dyn :: TickExpr a -> TickExprDyn
@@ -79,10 +89,6 @@ tau2Dyn (x :>~ y) = DSuccEq (dec2Dyn' x) (tau2Dyn y)
 tau2Dyn (BoundedSucc b x y) = DBoundedSucc b (dec2Dyn' x) (tau2Dyn y)
 
 vale2DynTop :: ValExpr cv a -> ValExprDyn
-vale2DynTop (x :=> y) = let
-    dx = vale2Dyn x
-    dy = vale2Dyn y
-  in DOrNoTick dx dy
 vale2DynTop x = vale2Dyn x
 
 vale2Dyn :: ValExpr cv a -> ValExprDyn
@@ -92,6 +98,11 @@ vale2Dyn (App x y) = let
     dx = vale2Dyn x
     dy = vale2Dyn y
   in DApp dx dy
+vale2Dyn (ITE x y z) = let
+    dx = vale2Dyn x
+    dy = vale2Dyn y
+    dz = vale2Dyn z
+  in DITE dx dy dz
 vale2Dyn (Tau x) = DTau (tau2Dyn x)
 vale2Dyn (Proj (x :: TauExpr a)) = DProj (tau2Dyn x) (\x -> (toDyn $! (maybegetval x)))
   where
@@ -101,4 +112,17 @@ vale2Dyn (Proj (x :: TauExpr a)) = DProj (tau2Dyn x) (\x -> (toDyn $! (maybegetv
     y `seq` Ev (((fromMaybe $ error "No dynamic").fromDynamic) v)
   maybegetval NegOutside = (NegOutside :: MaybeOutside a)
   maybegetval PosOutside = (PosOutside :: MaybeOutside a)
-vale2Dyn (x :=> y) = error "Nested usage of :=> is not allowed"
+vale2Dyn Notick = DNotick
+
+data InnerSpecification a where
+ IS :: (Typeable a, ToJSON a) => {
+    ins :: [(Ident, [Event])],
+    retStream :: Stream a,
+    stopStream :: Stream Bool
+  } -> InnerSpecification a
+
+getDecs :: InnerSpecification a -> Specification
+getDecs (IS _ rs ss) = [out rs, out ss]
+
+bind :: Typeable a => Declaration a -> [(TimeT,a)] -> (Ident, [Event])
+bind str vals = (getId str, map (\(tt, a) -> Ev (tt, Just$toDyn a)) vals)

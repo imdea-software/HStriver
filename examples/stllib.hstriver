@@ -1,0 +1,43 @@
+library STL
+use library Utils 
+use haskell Data.Maybe
+
+define Streamable a => Bool mu <String funame> <Stream a x> <(a->Double) f>:
+  ticks = ticksOf x
+  val = (1'f cv) > 0
+
+const filterId = Utils.filter "id" id
+const filterNot = Utils.filter "not" P.not
+
+define Bool until <(TimeDiff, TimeDiff) (a,b)> <Stream Bool x> <Stream Bool y>:
+  ticks = shift (-a) y U shift (-b) y U shift (-b) x U ticksOf x
+  val = let
+    tnow = 1'T now
+    yT = filterId y
+    min_yT = if Utils.shift (-a) y [~t|False] then tnow else timeOf (Utils.shift (-a) yT >>_(b-a) t)
+    xF = filterNot x
+    min_xF = if not (x [~t|False]) then tnow else timeOf (xF >>_b t)
+    plus x tim = 2'timeDiffPlus x 'tim
+    in
+    min_yT `plus` a <= tnow `plus` b && min_yT `plus` a <= min_xF
+
+define TimeDiff alwaysaux <TimeDiff n> <Stream Bool x>:
+  ticks = ticksOf x
+  val = let
+    nextx = 1'unT (timeOf (x>>t))
+    frontier = 2'tDiffAdd nextx 'n
+    in
+    not cv :=> if not (x [t>|False]) then (-1) else 2'tDiff frontier now
+
+define Bool statealways <TimeDiff n> <Stream Bool x>:
+  ticks = let aaux = alwaysaux n x in delay aaux U ticksOf aaux
+  val = 1'isNothing (snd cv)
+
+define Bool always <(TimeDiff, TimeDiff) (a,b)> <Stream Bool x>:
+  ticks = shift (-a) (statealways (b-a) x) U {0}
+  val = let
+    _this = always (a,b) x
+    in 2'fromMaybe (_this [<t|True]) (fst cv)
+
+define Bool eventually <(TimeDiff, TimeDiff) (a,b)> <Stream Bool x> =
+  neg (always (a,b) (neg x))

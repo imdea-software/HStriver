@@ -1,0 +1,18 @@
+library RobustSTL
+use haskell Declaration.Declaration
+use haskell Engine.Table
+use innerspec robustuntilspec
+use haskell Data.Maybe
+
+define Int until <(TimeDiff, TimeDiff) (a,b)> <Stream Int phi> <Stream Int psi>:
+  ticks = ticksOf phis U ticksOf psis
+  val = let
+    phils = stampFst <$> timeOf t <*> phis [~t|(Nothing, [])]
+    tplusa = timeDiffPlus <$> timeOf t <*> 'a
+    psils = stampFst <$> tplusa <*> psis [~t|(Nothing, [])]
+    in fromJust.runSpec <$> (untilspec <$> phils <*> psils)
+  where
+    phis = slice (0,b) phi
+    psis = slice (a,b) psi
+    stampFst _ (Nothing, r) = r
+    stampFst (T t) (Just v, r) = (t,v):r

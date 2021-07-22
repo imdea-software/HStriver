@@ -1,12 +1,11 @@
 module Theories.Time where
 
 import Data.Time
-import HStriver(TimeT, TimeTDiff)
 
 data HoursMinutes = HM {hours:: Int, minutes :: Int} deriving Show
 type TimeInterval = (HoursMinutes,HoursMinutes)
 
-timeToNextHM :: HoursMinutes -> TimeT -> TimeTDiff
+timeToNextHM :: HoursMinutes -> UTCTime -> NominalDiffTime
 timeToNextHM (HM h m) now  = let
   seconds = fromRational.toRational $ utctDayTime now
   targetSeconds = fromIntegral $ h*3600 + m*60

@@ -1,0 +1,89 @@
+time domain Double
+use library STL
+use library Utils
+
+input Double verification
+input Double mode
+input Double pedal
+
+const simTime = 50
+const eta = 1
+const taus = 10 + eta
+const zeta_min = 5
+
+-- preds(i).str = 'low'; % for the pedal input signal (<0.5)
+-- preds(i).str = 'high'; % for the pedal input signal (>0.5)
+-- preds(i).str = 'utr'; % u<=Ut
+-- preds(i).str = 'utl'; % u>=-Ut
+-- preds(i).str = 'pwr'; % mode >0.5 (power mode = 1)
+-- preds(i).str = 'norm'; % mode < 0.5 (normal mode = 0)
+
+define Bool low = Utils.strMap "<0.5" (P.<0.5) pedal
+define Bool high = Utils.strMap ">0.5" (P.>0.5) pedal
+define Bool utl <Double x> = Utils.strMap (">-" ++ show x) (P.>(-x)) verification
+define Bool utr <Double x> = Utils.strMap ("<" ++ show x) (P.<x) verification
+define Bool pwr = Utils.strMap ">0.5" (P.>0.5) mode
+define Bool norm = Utils.strMap "<0.5" (P.<0.5) mode
+
+define Bool strImplies <Stream Bool x> <Stream Bool y> = neg x `disj` y
+
+-- Opt1:
+-- Ut = 0.05;
+-- phi = ['[]_(' num2str(taus) ', ' num2str(simTime) ') utl /\ utr'];
+
+const ut1 = 0.05
+output Bool opt1 = STL.always (taus, simTime) (utl ut1 `conj` utr ut1)
+
+-- Opt2:
+-- Ut = 0.02;
+-- phi = ['[]_(' num2str(taus) ', ' num2str(simTime) ')(((low/\<>_(0,' ...
+--   num2str(h) ')high) \/ (high/\<>_(0,' num2str(h) ')low))' ...
+--   '-> []_[' num2str(eta) ', ' num2str(zeta_min) '](utr /\ utl))'];
+const ut2 = 0.02
+output Bool opt2 = STL.always (taus, simTime) (((low `conj` STL.eventually (0,h) high) `disj`
+                                    (high `conj` STL.eventually (0,h) low)) `strImplies`
+                                   STL.always (eta, zeta_min) (utl ut2 `conj` utr ut2))
+
+-- Opt3 :
+-- C = 0.05;
+-- Ut = C;
+-- phi = ['<>_['  num2str(simTime)  ','  num2str(simTime) '] utr' ];
+const ut3 = 0.05
+output Bool opt3 = STL.eventually (simTime, simTime) (utr ut3)
+
+-- Opt 4:
+-- Cr = 0.1;
+-- Ut = Cr;
+-- phi = ['[]_(' num2str(taus) ', ' num2str(simTime) ')utr'];
+const ut4 = 0.1
+output Bool opt4 = STL.always (taus, simTime) (utr ut4)
+
+-- Opt 5:
+-- Cr = 0.1;
+-- Ut = Cl;
+-- phi = ['[]_(' num2str(taus) ', ' num2str(simTime) ')utl'];
+const ut5 = 0.1
+output Bool opt5 = STL.always (taus, simTime) (utl ut5)
+
+-- Opt 6:
+-- Ut = 0.02;
+-- phi = ['[] ((pwr /\ <>_(0,' num2str(h), ')norm) -> (<>_('num2str(eta)', ' num2str(zeta_min) ') utl /\ utr))'];
+
+const h = 0.02
+const ut6 = 0.02
+output Bool opt6 = (pwr `conj` STL.eventually (0, h) norm) `strImplies` STL.eventually (eta, zeta_min) (utl ut6 `conj` utr ut6)
+
+-- Opt 7:
+-- Ut = 0.2;
+-- phi = '[] (pwr -> (utl /\ utr))';
+const ut7 = 0.2
+output Bool opt7 = pwr `strImplies` (utl ut7 `conj` utr ut7)
+
+-- Opt 8:
+-- Ut = 0.1;
+-- phi = ['[] (((low/\<>_(0,' num2str(h) ...
+--     ')high) \/ (high/\<>_(0,' num2str(h) ')low)) -> [] (utr /\ utl))'];
+const ut8 = 0.1
+output Bool opt8 = ((low `conj` STL.eventually (0,h) high) `disj`
+        (high `conj` STL.eventually (0,h) low)) `strImplies` STL.always (0,simTime) (utl ut8 `conj` utr ut8)
+

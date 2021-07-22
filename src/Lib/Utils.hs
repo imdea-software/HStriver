@@ -1,5 +1,6 @@
 module Lib.Utils where
-import qualified Prelude as P()
+import qualified Prelude as P
+import Syntax.Booleans
 import HStriver
 
 -- foldl :: (b -> a -> b) -> b -> t a -> b
@@ -12,9 +13,15 @@ import HStriver
 strMap :: (Streamable a, Streamable b) => Ident -> (a->b) -> Stream a -> Stream b
 strMap name f dec = let
   ticks = ticksTE dec
-  vals = f <$> dec @<~ t
+  vals = f <$> CV
   in
   name <: getId dec =: (ticks,vals)
+
+filter :: (Streamable a) => String -> (a->Bool) -> Stream a -> Stream a
+filter funame f x = let
+  ticks = ticksTE x
+  val = (f <$> CV) ?=> CV
+  in "filter" <: funame <: x =: (ticks,val)
 
 changePointsOf :: (Streamable a, Eq a) => Stream a -> Stream a
 changePointsOf str = let
@@ -23,5 +30,15 @@ changePointsOf str = let
   mEq = fmap <$> ((==) <$> CV) <*> prevMVal
   update (Ev True) = False
   update _ = True
-  vals = (update <$> mEq) :=> CV
+  vals = (update <$> mEq) ?=> CV
   in "changePoints" <: str =: (ticks,vals)
+
+firstEvOf :: (Streamable a) => Stream a -> Stream a
+firstEvOf str = let
+  ticks = ticksTE str
+  _this = firstEvOf str
+  vals = ((==NegInfty) <$> Tau (_this :<< TauT)) ?=> CV
+  in "firstOf" <: str =: (ticks,vals)
+
+shift :: (Streamable a) => TimeDiff -> Stream a -> Stream a
+shift n x = "shift" <:n<:x =: (ShiftTE n x, CV)

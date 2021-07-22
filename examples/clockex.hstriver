@@ -1,0 +1,4 @@
+time domain Double
+output TimeDiff clock:
+  ticks = {0} U delay clock
+  val = 5

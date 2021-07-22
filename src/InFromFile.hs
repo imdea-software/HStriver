@@ -10,20 +10,18 @@ import Declaration.Declaration
 import Declaration.DecDyn
 import Engine.Table
 import Declaration.Spec
-import System.FilePath.Posix(takeBaseName, takeExtension)
+import System.FilePath.Posix(dropExtension, takeBaseName, takeExtension, (</>), FilePath)
 import qualified Data.Map.Strict as Map
 import Data.Maybe
+import Control.Monad.Extra (partitionM)
 import Debug.Trace
-import qualified Data.Map.Merge.Strict as MM
 
 type FromJSONers = Map.Map Ident (Value -> Dynamic)
 
 data SourcesMode = STDIN | Files {path :: String, fieldName :: String}
 
-x !!! y = x Map.! y
-
 simpletsgetter :: String -> TSGetter
-simpletsgetter fieldname m = (fromMaybe (error "aca").parseMaybe parseJSON) (traceShowId $ m !!! fieldname)
+simpletsgetter fieldname m = (fromMaybe (error "aca").parseMaybe parseJSON) (m !!! fieldname)
 
 runSpecJSON :: TSGetter -> SourcesMode -> Specification -> IO ()
 runSpecJSON getts src@(Files _ fieldval) decs = do
@@ -41,16 +39,26 @@ runSpecJSON getts src@(Files _ fieldval) decs = do
     mapM_ putStrLn showInstants
     --putStrLn (run JSON debug decs instants)
 
+getFiles :: String -> IO [String]
+getFiles dir = do
+  names <- listDirectory dir
+  let paths = map (dir </>) names
+  (dirs, files) <- partitionM doesDirectoryExist paths
+  let herefiles = filter ((==".json").takeExtension) files
+  innerfiles <- concat Prelude.<$> mapM getFiles dirs
+  return $ herefiles ++ innerfiles
+
 getNameAndContents (Files dir _) = do
-  infiles <- filter ((==".json").takeExtension) Prelude.<$> listDirectory dir
-  incontents <- mapM B.readFile (map ((dir++"/")++) infiles)
-  return $ zip (map takeBaseName infiles) incontents
+  fnames <- getFiles dir
+  incontents <- mapM B.readFile fnames
+  return $ zip (map (dropExtension.dropWhile (=='/') . drop (length dir)) fnames) incontents
 getNameAndContents STDIN = do
   content <- B.getContents
   return [("/stdin", content)]
 
-instantsGetter contentsmap getts src (DInp id f) = let
+instantsGetter contentsmap getts src inp@(DInp _ _ f) = let
   --getts m = (fromJust.(parseMaybe parseJSON) :: Value -> TimeT) (m Map.! "timestamp")
+  id = dgetId inp
   evmaps = contentsmap !!! contentix src id
   in catMaybes (map (\m -> (daf (getts m) $ Map.lookup (valix src id) m)) evmaps)
   where

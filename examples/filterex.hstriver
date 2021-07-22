@@ -1,0 +1,6 @@
+time domain Double
+input Int x
+
+output Int y:
+  ticks = ticksOf x
+  val = if x[~t|] < 0 then notick else x[~t|]

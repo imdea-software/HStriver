@@ -1,0 +1,31 @@
+library Utils
+
+define (Streamable a, Streamable b) => b strMap <String funame> <(a->b) f> <Stream a s>:
+  ticks = ticksOf s
+  val = 1'f cv
+
+define (Streamable a) => a filter <String funame> <(a->Bool) f> <Stream a x>:
+  ticks = ticksOf x
+  val = (1'f cv) :=> cv
+
+define (Eq a, Streamable a) => a changePointsOf <Stream a s>:
+  ticks = ticksOf s
+  val = let
+    prevMVal = s[<t|?]
+    noprev = prevMVal === '-out
+    prevVal = 1'getEvent prevMVal
+    update = prevVal /== cv
+    in noprev || update :=> cv
+    where
+    getEvent (Ev x) = x
+
+define Streamable a => a firstEvOf <Stream a s>:
+  ticks = ticksOf s
+  val = let
+    _this = firstEvOf s
+    isfirst = timeOf (_this << t) === '-infty
+    in isfirst :=> cv
+
+define Streamable a => a shift <TimeDiff n> <Stream a x>:
+  ticks = shift n x
+  val = cv

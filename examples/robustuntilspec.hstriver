@@ -1,0 +1,21 @@
+innerspec Int robustuntilspec
+
+const maxStrVal = maxBound
+const minStrVal = minBound
+
+input Int xs
+input Int ys
+output Bool empty:
+  ticks = {0}
+  val = notick
+output Int xsmins:
+  ticks = ticksOf xs
+  val = min <$> xsmins [<t|maxStrVal] <*> cv
+output Int theMins:
+  ticks = ticksOf xsmins U ticksOf ys
+  val = min <$> ys [~t|maxStrVal] <*> xsmins [~t|maxStrVal]
+output Int theMaxMin:
+  ticks = ticksOf theMins
+  val = max <$> theMaxMin [<t|minStrVal] <*> cv
+
+return theMaxMin when empty

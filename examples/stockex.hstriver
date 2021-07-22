@@ -1,0 +1,14 @@
+time domain Double
+use haskell Data.Maybe
+
+input Int sale
+input Int arrival
+
+output Int stock:
+  ticks = ticksOf sale U ticksOf arrival
+  val = let
+    (msal, marr) = cv
+    sal = 1'(fromMaybe 0) msal
+    arr = 1'(fromMaybe 0) marr
+    in
+    stock[<t|0] - sal + arr

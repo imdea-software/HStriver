@@ -20,7 +20,7 @@ constTickExpr t = do
   setTEState testateix (toDyn False)
   return $ ITickExpr (constTE t testateix) (return ())
 
-shiftTickExpr :: TimeTDiff -> Ident -> Stateful ITickExpr
+shiftTickExpr :: TimeDiff -> Ident -> Stateful ITickExpr
 shiftTickExpr t streamid = do
   !pointer <- getPointer streamid
   return $ ITickExpr (shiftTE t pointer) (unhookPointer pointer)
@@ -41,10 +41,10 @@ constTE t ix = do
     setTEState ix (toDyn True)
     return $ Ev (t, Just (toDyn ()))
 
-shiftTE :: TimeTDiff -> PointerIndex -> Stateful Event
+shiftTE :: TimeDiff -> PointerIndex -> Stateful Event
 shiftTE t pi = do
   mev <- pull pi
-  return $ maybe posOutside addShift mev
+  return $ addShift mev
   where
     addShift (Ev (a, x)) = Ev ((a `tDiffAdd` t), x)
     addShift x = x
@@ -52,8 +52,8 @@ shiftTE t pi = do
 unionTE :: Dynamic -> (ITickExpr, ITickExpr) -> TeStateIndex -> Stateful Event
 unionTE fs (leftTE, rightTE) ix = do
   (leftT, rightT, lastts) <- getTEState ix >>= return.fromMaybe (error "State with wrong dyn").fromDynamic
-  leftNew <- getNextUnion lastts leftT leftTE
-  rightNew <- getNextUnion lastts rightT rightTE
+  !leftNew <- getNextUnion lastts leftT leftTE
+  !rightNew <- getNextUnion lastts rightT rightTE
   retTS <- return $ min (getTS leftNew) (getTS rightNew)
   setTEState ix (toDyn (leftNew, rightNew, retTS))
   cv <- return $ checkSth fs (getCVUnion leftNew (getTS rightNew), getCVUnion rightNew (getTS leftNew))
@@ -84,7 +84,7 @@ delayTE Positive pi ix = delayPos pi ix
 delayPos :: PointerIndex -> TeStateIndex -> Stateful Event
 delayPos pi ix = do
   sum <- getTEState ix >>= return.fromMaybe (error "State with wrong dyn").fromDynamic
-  ev <- liftM (fromMaybe PosOutside) $ pull pi
+  ev <- pull pi
   setTEState ix $! (toDyn $! getNewSum sum ev)
   return $ let evts = getTS ev in
     if sum <= evts then makeEv sum (Just $ toDyn ()) else makeEv evts Nothing
@@ -103,7 +103,7 @@ getNewSum t ev
 
 delayNeg :: PointerIndex -> TeStateIndex -> Stateful Event
 delayNeg pi ix = do
-  ev <- liftM fromJust $ iterateWhile (\(Just ev) -> isnotick ev && isinside ev) (pull pi) -- Positive cycle not supported
+  ev <- iterateWhile (\ev -> isnotick ev && isinside ev) (pull pi) -- Positive cycle not supported
   limit <- getTEState ix >>= return.fromMaybe (error "State with wrong dyn").fromDynamic
   setTEState ix (toDyn $ getTS ev)
   let

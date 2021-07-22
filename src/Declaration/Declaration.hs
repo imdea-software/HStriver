@@ -1,5 +1,6 @@
 {-# Language GADTs #-}
 {-# Language FlexibleContexts #-}
+{-# Language FlexibleInstances #-}
 {-# LANGUAGE ConstraintKinds #-}
 module Declaration.Declaration (module Declaration.Declaration, module Declaration.Event, Declaration.Event.DelayDir(..)) where
 import Declaration.Event
@@ -13,17 +14,19 @@ type Stream = Declaration
 data TickExpr cv where
   ConstTE :: TimeT -> TickExpr ()
   (:+) :: (Typeable cv0, Typeable cv1) => TickExpr cv0 -> TickExpr cv1 -> TickExpr (Maybe cv0, Maybe cv1)
-  ShiftTE :: TimeTDiff -> Declaration cv -> TickExpr cv
-  DelayTE :: DelayDir -> Declaration TimeTDiff -> TickExpr ()
+  ShiftTE :: TimeDiff -> Declaration cv -> TickExpr cv
+  DelayTE :: DelayDir -> Declaration TimeDiff -> TickExpr ()
 
 data ValExpr cv a where
   Leaf :: (Typeable a, Typeable cv) => a -> ValExpr cv a
   CV :: Typeable cv => ValExpr cv cv
   App :: (Typeable (b->a), Typeable b, Typeable a, Typeable cv) => ValExpr cv (b->a) -> ValExpr cv b -> ValExpr cv a
-  -- "Or no tick". This is the only way of returning a notick
-  (:=>) :: (Typeable a, Typeable cv) => ValExpr cv Bool -> ValExpr cv a -> ValExpr cv a
+  ITE :: (Typeable a, Typeable cv) => ValExpr cv Bool -> ValExpr cv a -> ValExpr cv a -> ValExpr cv a
+  Notick :: (Typeable a, Typeable cv) => ValExpr cv a
   Tau :: Typeable cv => TauExpr x -> ValExpr cv Time
   Proj :: (Typeable cv, Typeable x) => TauExpr x -> ValExpr cv (MaybeOutside x)
+
+-- infixl 1 :=>
 
 data TauExpr a where
   TauT :: TauExpr a
@@ -31,10 +34,11 @@ data TauExpr a where
   (:<~) :: Declaration a -> TauExpr b -> TauExpr a
   (:>>) :: Declaration a -> TauExpr b -> TauExpr a
   (:>~) :: Declaration a -> TauExpr b -> TauExpr a
-  BoundedSucc :: TimeTDiff -> Declaration a -> TauExpr b -> TauExpr a
+  BoundedSucc :: TimeDiff -> Declaration a -> TauExpr b -> TauExpr a
 
 data Declaration a where
   Input :: (FromJSON a,Typeable a) => Ident -> Declaration a
+  NewInput :: (FromJSON a,Typeable a) => Ident -> [String] -> Declaration a
   Output :: (Typeable a, Typeable cv) => Ident -> TickExpr cv -> ValExpr cv a -> Declaration a
 
 getId :: Declaration a -> Ident
@@ -46,6 +50,11 @@ getId (Output id _ _) = id
 infix 1 =:
 (=:) :: (Streamable a, Streamable cv) => Ident -> (TickExpr cv, ValExpr cv a) -> Declaration a
 s =: (te,ve) = Output s te ve
+
+infix 1 ==:
+(==:) :: (Streamable a) => Ident -> Declaration a -> Declaration a
+s ==: Output _ te ve = s =: (te, ve)
+s ==: x@(Input _) = s =: (ticksTE x, CV)
 
 infixl 4 <$>
 (<$>) :: (Typeable a, Typeable b, Typeable cv) => (a -> b) -> ValExpr cv a -> ValExpr cv b
@@ -82,6 +91,18 @@ a @> x = fromAtable x Succ a
 (@~>) ::  (Atable f, Typeable cv, Typeable a) => Declaration a -> f a -> ValExpr cv a
 a @~> x = fromAtable x SuccEq a
 
+(@<?) :: (Typeable cv, Typeable a) => Declaration a -> TauExpr b -> ValExpr cv (MaybeOutside a)
+a @<? x = Proj (a :<< x)
+
+(@<~?) :: (Typeable cv, Typeable a) => Declaration a -> TauExpr b -> ValExpr cv (MaybeOutside a)
+a @<~? x = Proj (a :<~ x)
+
+(@>?) :: (Typeable cv, Typeable a) => Declaration a -> TauExpr b -> ValExpr cv (MaybeOutside a)
+a @>? x = Proj (a :>> x)
+
+(@~>?) :: (Typeable cv, Typeable a) => Declaration a -> TauExpr b -> ValExpr cv (MaybeOutside a)
+a @~>? x = Proj (a :>~ x)
+
 class Atable f where
   fromAtable :: (Typeable cv, Typeable a) => f a -> MyAcc -> Declaration a -> ValExpr cv a
 
@@ -104,9 +125,14 @@ getConstructor SuccEq = (:>~)
 
 -- TODO define precedence
 
-(>>|) :: Declaration a -> TimeTDiff -> TauExpr b -> TauExpr a
+infixl 9 >>|
+(>>|) :: Declaration a -> TimeDiff -> TauExpr b -> TauExpr a
 (x >>| b) y = BoundedSucc b x y
 
+infixl 8 `boundedApply`
+boundedApply f x = f x
+
+projGet :: (Typeable a, Typeable cv) => TauExpr a -> ValExpr cv a
 projGet texp = unEv Declaration.Declaration.<$> Proj texp
   where
     unEv (Ev x) = x
@@ -129,10 +155,10 @@ texp ?|| x = getValDefault Declaration.Declaration.<$> Proj texp Declaration.Dec
     getValDefault _ y = y
 
 notick :: (Typeable a, Typeable cv) => ValExpr cv a
-notick = Leaf False :=> Leaf undefined
+notick = Notick
 
 maybenotick :: (Typeable a, Typeable cv) => ValExpr cv (Maybe a) -> ValExpr cv a
-maybenotick e = (isJust Declaration.Declaration.<$> e) :=> (fromJust Declaration.Declaration.<$> e)
+maybenotick e = undefined -- (isJust Declaration.Declaration.<$> e) :=> (fromJust Declaration.Declaration.<$> e)
 
 ticksTE :: Typeable cv => Declaration cv -> TickExpr cv
 ticksTE = ShiftTE 0
@@ -144,7 +170,7 @@ comb3CV :: (Typeable a, Typeable b, Typeable c) => ValExpr (Maybe (Maybe a, Mayb
 comb3CV = f Declaration.Declaration.<$> CV
   where f (x,y) = (maybe Nothing fst x, maybe Nothing snd x, y)
 
-split3CV :: (Typeable a, Typeable b, Typeable c) => (ValExpr (Maybe (Maybe a, Maybe b),Maybe c) (Maybe a), ValExpr (Maybe (Maybe a, Maybe b),Maybe c) (Maybe b), ValExpr (Maybe (Maybe a, Maybe b),Maybe c) (Maybe c))
-split3CV = let combedcv = comb3CV
+split2CV :: (Typeable a, Typeable b, Typeable c) => (ValExpr (Maybe (Maybe a, Maybe b),Maybe c) (Maybe a), ValExpr (Maybe (Maybe a, Maybe b),Maybe c) (Maybe b), ValExpr (Maybe (Maybe a, Maybe b),Maybe c) (Maybe c))
+split2CV = let combedcv = comb3CV
   in
   (fst3 Declaration.Declaration.<$> combedcv, snd3 Declaration.Declaration.<$> combedcv, thd3 Declaration.Declaration.<$> combedcv)
