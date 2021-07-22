@@ -15,3 +15,6 @@ clock = let
   ticks = ConstTE 0 :+ DelayTE Positive clock
   val = 5
   in "clock" =: (ticks,val)
+
+spec :: Specification
+spec = [out clock]

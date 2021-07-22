@@ -54,10 +54,14 @@ unionTE fs (leftTE, rightTE) ix = do
   (leftT, rightT, lastts) <- getTEState ix >>= return.fromMaybe (error "State with wrong dyn").fromDynamic
   !leftNew <- getNextUnion lastts leftT leftTE
   !rightNew <- getNextUnion lastts rightT rightTE
-  retTS <- return $ min (getTS leftNew) (getTS rightNew)
+  retTS <- return $ mmin (getTS leftNew) (getTS rightNew)
   setTEState ix (toDyn (leftNew, rightNew, retTS))
   cv <- return $ checkSth fs (getCVUnion leftNew (getTS rightNew), getCVUnion rightNew (getTS leftNew))
   return $ makeEv retTS cv
+  where
+  mmin NegInfty x = x
+  mmin x NegInfty = x
+  mmin x y = min x y
 
 getNextUnion :: Time -> Event -> ITickExpr -> Stateful Event
 getNextUnion lastreturn lastev te =
@@ -69,6 +73,8 @@ getNextUnion lastreturn lastev te =
     return lastev
 
 getCVUnion :: Event -> Time -> Val
+getCVUnion NegOutside _ = Nothing
+getCVUnion ev NegInfty = getVal ev
 getCVUnion ev otherts =
   if getTS ev <= otherts then getVal ev else Nothing
 
@@ -86,16 +92,20 @@ delayPos pi ix = do
   sum <- getTEState ix >>= return.fromMaybe (error "State with wrong dyn").fromDynamic
   ev <- pull pi
   setTEState ix $! (toDyn $! getNewSum sum ev)
-  return $ let evts = getTS ev in
-    if sum <= evts then makeEv sum (Just $ toDyn ()) else makeEv evts Nothing
+  return $ let evts = getTS ev in dafun sum evts
+  where
+  dafun sum evts
+    | evts == NegInfty || sum <= evts = makeEv sum (Just $ toDyn ())
+    | otherwise = makeEv evts Nothing
 
 getNewSum :: Time -> Event -> Time
 getNewSum _ (Ev (x, Just y))
-  | realy >0 && newsum < maxT = newsum
+  | realy > 0 && newsum < maxT = newsum
   | otherwise = PosInfty
   where
     realy = fromDyn y (error "No double")
     newsum = T (x `tDiffAdd` realy)
+getNewSum _ NegOutside = PosInfty
 getNewSum t ev
   | t <= getTS ev = PosInfty
   | otherwise = t

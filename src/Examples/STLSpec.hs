@@ -21,7 +21,7 @@ max_speed = 5
 ok_speed = 4
 
 inps :: Declaration Double
-inps = Input "inps" -- [(fromIntegral x,Just $ toDyn y) | (x,y) <- zip [0..50000000] (randoms $ mkStdGen 1 :: [Double])]
+inps = Input "inps"
 
 offsets :: Declaration Double
 offsets = let
