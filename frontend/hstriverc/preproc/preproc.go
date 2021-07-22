@@ -136,26 +136,26 @@ import Declaration.StaticAnalysis
 import qualified Prelude as P
 %s
 
-data ExecMode = ExecSpec String String | ShowHelp | Analyse
+data ExecMode = ExecSpec String String String | ShowHelp | Analyse
 
 main :: IO ()
 main = parseArgs P.<$> getArgs >>= runInMode
 
 parseArgs :: [String] -> ExecMode
-parseArgs [dir, valfield] = ExecSpec dir valfield
+parseArgs ["--execute", dir, tsfield, valfield] = ExecSpec dir tsfield valfield
 parseArgs ["analyse"] = Analyse
 parseArgs _ = ShowHelp
 
 runInMode :: ExecMode -> IO ()
-runInMode (ExecSpec dir valfield) = do
+runInMode (ExecSpec dir tsfield valfield) = do
   hSetBuffering stdin LineBuffering
   hSetBuffering stdout LineBuffering
-  runSpecJSON sysTimeGetter (Files dir valfield) specification
+  runSpecJSON (sysTimeGetter tsfield) (Files dir valfield) specification
 runInMode Analyse = analyse specification
 runInMode ShowHelp = putStr$unlines [
     "Wrong arguments. Usage:"
-  , "  HStriver dir valueField"
-  , "Where dir indicates the directory to look for the input JSONs, and valueField is the field where the value of the events is placed."]
+  , "  HStriver dir tsField valueField"
+  , "Where dir indicates the directory to look for the input JSONs, and tsField and valueField are the fields where the timestamp and value of the events are placed."]
 
 -- Custom Haskell
 %s

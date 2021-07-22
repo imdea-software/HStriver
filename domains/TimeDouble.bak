@@ -22,5 +22,5 @@ tDiffAdd = (+)
 tDiff :: TimeT -> TimeT -> TimeDiff
 tDiff = (-)
 
-sysTimeGetter :: TSGetter
-sysTimeGetter m = (fromJust.parseMaybe parseJSON) (m Map.! "Time")
+sysTimeGetter :: String -> TSGetter
+sysTimeGetter tsfield m = (fromJust.parseMaybe parseJSON) (m Map.! tsfield)

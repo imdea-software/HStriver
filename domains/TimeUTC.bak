@@ -40,8 +40,5 @@ sysTimeToTimeT ignoreSeconds (SysTime y mo d h m s) = let
   now True = UTCTime today (secondsToDiffTime.toInteger $ h*3600 + m*60)
   in now ignoreSeconds
 
-sysTimeGetter :: TSGetter
-sysTimeGetter m = (sysTimeToTimeT False .fromJust.parseMaybe parseJSON) (m Map.! "Time")
-
-sysTimeGetterIgnoreSeconds :: TSGetter
-sysTimeGetterIgnoreSeconds m = (sysTimeToTimeT True .fromJust.parseMaybe parseJSON) (m Map.! "Time")
+sysTimeGetter :: String -> TSGetter
+sysTimeGetter tsfield m = (sysTimeToTimeT False .fromJust.parseMaybe parseJSON) (m Map.! tsfield)
