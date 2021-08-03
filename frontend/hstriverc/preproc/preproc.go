@@ -17,6 +17,7 @@ const (
 	VAL
 	WHERE
 	ALIASPART
+	DATAPART
 	NONE
 )
 
@@ -79,6 +80,7 @@ var outfname string = "/Main.hs"
 var typedInputs map[string]TypeAndDef = make(map[string]TypeAndDef)
 var typedOutputs map[string]TypeAndDef = make(map[string]TypeAndDef)
 var typedAlias map[string]Alias = make(map[string]Alias)
+var datas map[string]string = make(map[string]string)
 var lastid string = ""
 var lastpart PartType = NONE
 var order []IOid = make([]IOid, 0)
@@ -157,12 +159,15 @@ runInMode ShowHelp = putStr$unlines [
   , "  HStriver dir tsField valueField"
   , "Where dir indicates the directory to look for the input JSONs, and tsField and valueField are the fields where the timestamp and value of the events are placed."]
 
+-- Custom datas
+%s
+
 -- Custom Haskell
 %s
+-- End of custom Haskell
 
 -- Constants
 %s
--- End of custom Haskell
 `
 
 var headerInner = `{-# LANGUAGE RebindableSyntax  #-}
@@ -184,14 +189,19 @@ import Syntax.Num
 import qualified Prelude as P
 %s
 
+-- Custom datas
+%s
+
 -- Custom Haskell
 %s
+-- End of custom Haskell
 
 %s :: %s %s %s InnerSpecification %s
 %s %s %s = IS [%s] %s %s
   where
 %s
 `
+
 /*
 args: Libname, custom imports, custom haskell
 */
@@ -209,8 +219,12 @@ import Syntax.Num
 import qualified Prelude as P
 %s
 
+-- Custom datas
+%s
+
 -- Custom Haskell
 %s
+-- End of custom Haskell
 `
 
 // As seen on StackOverflow
@@ -329,6 +343,17 @@ func processAliasDeclaration(s string) {
 	lastid = id
 	lastpart = ALIASPART
 	order = append(order, IOid{id, ALIAS})
+}
+func processDataDeclaration(s string) {
+	re := regexp.MustCompile(`^(?P<kind>data|type) (?P<name>[^ ]*) (?P<rest>.*)$`)
+	themap := FindStringSubmatchMap(re, s)
+	if len(themap) < 2 {
+		return
+	}
+	name := themap["name"]
+	lastpart = DATAPART
+	lastid = name
+	datas[name] = s
 }
 
 func processOutputDeclaration(s string) {
@@ -563,7 +588,7 @@ func processReturn(s string) {
 }
 
 func processUsage(s string) {
-	useRE := regexp.MustCompile(`^use (?P<kind>(innerspec|library|theory|haskell)) (?P<name>.*)$`)
+	useRE := regexp.MustCompile(`^use (?P<qualified>(qualified )?)(?P<kind>(innerspec|library|theory|haskell)) (?P<name>.*)$`)
 	themap := FindStringSubmatchMap(useRE, s)
 	if len(themap) < 2 {
 		if strings.HasPrefix(s, "use ") {
@@ -571,18 +596,29 @@ func processUsage(s string) {
 		}
 		return
 	}
+	newimport := "import "
+	qualified := themap["qualified"] == "qualified "
 	var usekind string
+	thename := themap["name"]
 	switch themap["kind"] {
 	case "library":
-		usekind = "Lib." + themap["name"]
+		usekind = "Lib." + thename
 	case "theory":
-		usekind = "Theories." + themap["name"]
+		usekind = "Theories." + thename
 	case "innerspec":
-		usekind = "INNERSPECSDIR.INNERSPEC_" + themap["name"]
+		usekind = "INNERSPECSDIR.INNERSPEC_" + thename
+	case "haskell":
+		usekind = "" + thename
 	default:
-		usekind = "" + themap["name"]
+		panic("Unrecognized usage " + thename)
 	}
-	newimport := "import " + usekind
+	if qualified {
+		newimport = newimport + "qualified "
+	}
+	newimport = newimport + usekind
+	if qualified {
+		newimport = newimport + " as " + thename
+	}
 	headerinfo.imports += newimport + "\n"
 }
 
@@ -698,16 +734,16 @@ func replaceBoundedOffsets(def string) string {
 
 func replaceaccess(line string, restr, replacement string) string {
 	findre := regexp.MustCompile(restr)
-  replacere := regexp.MustCompile(restr[2:len(restr)-2])
+	replacere := regexp.MustCompile(restr[2 : len(restr)-2])
 	for loc := findre.FindStringIndex(line); loc != nil; loc = findre.FindStringIndex(line) {
 		startix := loc[0]
 		lefthand := line[:startix]
 		righthand := line[startix:]
-    midhand, righthand:= findBalanced(righthand, '[', ']')
-    midhand = midhand[1:len(midhand)-1]
+		midhand, righthand := findBalanced(righthand, '[', ']')
+		midhand = midhand[1 : len(midhand)-1]
 		replaced := replacere.ReplaceAllString(midhand, replacement)
 		line = lefthand + replaced + righthand
-}
+	}
 	return line
 }
 
@@ -722,7 +758,7 @@ func procVal(def string, splitby int) string {
 	accessSuccDflt := regexp.MustCompile(`\[(?P<offset>[^~<][^|]*)>\|(?P<default>[^\]]+)\]`)
 	accessSuccEqDflt := regexp.MustCompile(`\[(?P<offset>[^~<][^|]*)~\|(?P<default>[^\]]+)\]`)
 	accessPrevDflt := regexp.MustCompile(`\[<(?P<offset>[^|]*[^~>])\|(?P<default>[^\]]+)\]`)
-  // accessPrevEqDflt := regexp.MustCompile(`\[~(?P<offset>[^|]*[^~>])\|(?P<default>[^\]]+)\]`)
+	// accessPrevEqDflt := regexp.MustCompile(`\[~(?P<offset>[^|]*[^~>])\|(?P<default>[^\]]+)\]`)
 	accessSuccNoDflt := regexp.MustCompile(`\[(?P<offset>[^~<][^|]*)>\|(?P<qmark>\??)\]`)
 	accessSuccEqNoDflt := regexp.MustCompile(`\[(?P<offset>[^~<][^|]*)~\|(?P<qmark>\??)\]`)
 	accessPrevNoDflt := regexp.MustCompile(`\[<(?P<offset>[^|]*[^~>])\|(?P<qmark>\??)\]`)
@@ -800,9 +836,13 @@ func process(s string) {
 	if strings.HasPrefix(s, "  ") {
 		if lastpart == ALIASPART {
 			thedef := typedAlias[lastid]
-      thedef.def += "\n" + getIndentation() + s
+			thedef.def += "\n" + getIndentation() + s
 			typedAlias[lastid] = thedef
-      return
+			return
+		}
+		if lastpart == DATAPART {
+			datas[lastid] = datas[lastid] + "\n" + s
+			return
 		}
 	}
 	if strings.HasPrefix(s, "   ") {
@@ -810,13 +850,14 @@ func process(s string) {
 			panic("No last output or part")
 		}
 		thedef := typedOutputs[lastid]
-    thedef.defs[lastpart] += "\n" + getIndentation() + s
+		thedef.defs[lastpart] += "\n" + getIndentation() + s
 		typedOutputs[lastid] = thedef
 		return
 	}
 	processWhereDeclaration(s)
 	processInputDeclaration(s)
 	processOutputDeclaration(s)
+	processDataDeclaration(s)
 	processAliasDeclaration(s)
 	processTickDeclaration(s)
 	processValDeclaration(s)
@@ -868,8 +909,13 @@ specification = [`)
 }
 
 func printHeader() {
+	datastext := ""
+	for _, txt := range datas {
+		datastext = datastext + "\n" + txt
+	}
 	if headerinfo.libname != "" {
-		printToFile(headerLib, headerinfo.libname, headerinfo.imports, headerinfo.verbatim)
+		printToFile(headerLib, headerinfo.libname, headerinfo.imports,
+			datastext, headerinfo.verbatim)
 	} else if headerinfo.innerspecname != "" {
 		var inputstreamtypes []string = make([]string, 0)
 		var inputstreamargnames []string = make([]string, 0)
@@ -893,7 +939,7 @@ func printHeader() {
 		}
 
 		innername := headerinfo.innerspecname
-		printToFile(headerInner, innername, headerinfo.imports, headerinfo.verbatim,
+		printToFile(headerInner, innername, headerinfo.imports, datastext, headerinfo.verbatim,
 			innername,
 			headerinfo.innerspecconstraints,
 			strings.Join(argtypes, " "),
@@ -907,7 +953,7 @@ func printHeader() {
 			headerinfo.stopstream,
 			headerinfo.constants)
 	} else {
-		printToFile(headerMain, headerinfo.imports, headerinfo.verbatim, headerinfo.constants)
+		printToFile(headerMain, headerinfo.imports, datastext, headerinfo.verbatim, headerinfo.constants)
 	}
 }
 
