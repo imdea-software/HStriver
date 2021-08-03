@@ -802,6 +802,7 @@ func process(s string) {
 			thedef := typedAlias[lastid]
       thedef.def += "\n" + getIndentation() + s
 			typedAlias[lastid] = thedef
+      return
 		}
 	}
 	if strings.HasPrefix(s, "   ") {
