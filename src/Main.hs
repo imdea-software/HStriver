@@ -14,7 +14,7 @@ import qualified Examples.Throughput as Throughput (main)
 data RunMode = ExecImportedSpec String String String | AnalyseImportedSpec | ShowHelp
 
 importedSpec :: Specification
-importedSpec = Stock.spec
+importedSpec = Clock.spec
 
 main :: IO ()
 main = parseArgs <$> getArgs >>= runInMode
